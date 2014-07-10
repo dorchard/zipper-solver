@@ -1,9 +1,10 @@
 Whilst doing some experimenting with some ideas for a project, I
  realised I needed a quick piece of code to rearrange equations in an
  AST form (e.g., given an equation x = y + 3, solve for y to get y = 3
- - x). I needed to do this for arbitrary formulae, and suddenly
- realised that this forms a kind of <i>zipper</i> over the AST. I'll
- show the construction here for a simple arithmetic calculus with the AST:
+ - x) for arbitrary formulae over +, -, /, *. 
+I suddenly realised that this forms a kind of <i>zipper</i> over the AST. I'll
+ show the construction here for a simple arithmetic calculus with the following simple 
+AST data type: 
 
 > data Term = Add Term Term 
 >           | Mul Term Term 
@@ -33,20 +34,25 @@ with some standard pretty printing code:
 > show' t@(Neg (Const n)) = show t
 > show' t = "(" ++ show t ++ ")"
 
-Now, equations on <tt>Term</tt>s are zippers. Zippers represents data (of a recursively-defined data type)
-that has part of the data "in focus". This is done by pairing the focal subdata with a "path" to get to the data:
+Equations, of the form 'T1 = T2' where T1 and T2 are both represented
+ by values of <tt>Term</tt>s can be defined as a <i>zipper</i> data
+ type. Zippers represent values (of some data type) that have part of
+ the value "in focus". This is done by pairing the focal subvalue with
+ a "path" to get to this focal value which records the rest of the
+ structure not in focus.
 
 > data Equation = Eq Term Path
 
-For equations, the focus of the zipper is the left-hand side of the equation, and
- the path will be the right-hand side.
+For equations, I'll define the focus of the zipper as the left-hand
+ side of the equation, and the path will be the right-hand side.
 
-Paths give a sequence of direction markers, essentially providing an address to
-the subterm in focus, starting from the root, where each marker is accompanied with the label
-of the parent node and the subtree of the branch not taken, i.e., a path going left is paired with the 
-right subtree, which is not on the path to the focus.
+Paths give a sequence of direction markers, essentially providing an
+address to the subterm in focus, starting from the root, where each
+marker is accompanied with the label of the parent node and the
+subtree of the branch not taken, i.e., a path going left is paired
+with the right subtree (which is not on the path to the focus).
 
-> data Path = Top (Either Integer String)  -- At the top, e.g. ... = 0
+> data Path = Top (Either Integer String)  -- At the top, a constant or variable, e.g. ... = 0
 >           | Bin Op                -- OR in a binary operation <tt>Op</tt>,
 >                 Dir               --    in either left (<tt>L</tt>) or right (<tt>R</tt>) branch
 >                 Term              --    with the untaken branch 
@@ -87,10 +93,13 @@ where <tt>pathToTerm</tt> converts paths to terms in the obvious way:
 > pathToTerm (Bin op R t p) = (opToTermC op) t (pathToTerm p)
 > pathToTerm (N p)          = Neg (pathToTerm p)
 
-Now onto the solving zipper. Equations are zipped-down by <tt>left</tt> and <tt>right</tt>
-which for a binary operation focus on either the left or right argument respectively, for unary
-negation focus on the single argument, and for constants or variables does nothing. 
-When going left or right, the equations are rebalanced with inverse arithmetic operations:
+Now onto the zipper operations which essentially rebalance the
+equation.  Equations are zipped-down by <tt>left</tt> and
+<tt>right</tt> which for a binary operation focus on either the left
+or right argument respectively, for unary negation focus on the single
+argument, and for constants or variables does nothing.  When going
+left or right, the equations are rebalanced with their inverse
+arithmetic operations:
 
 > left (Eq (Var s) p)     = Eq (Var s) p
 > left (Eq (Const n) p)   = Eq (Const n) p
@@ -108,27 +117,28 @@ When going left or right, the equations are rebalanced with inverse arithmetic o
 > right (Eq (Sub t1 t2) p) = Eq t2 (Bin S R t1 p)   -- t1 - t2 = p -> t2 = t1 - p
 > right (Eq (Neg t) p)     = Eq t (N p)
 
-Notably in <tt>right</tt>, <tt>Add</tt> and <tt>Mul</tt> become
- subtraction and dividing, as do <tt>Div</tt> and <tt>Sub</tt>. In
- order for the the zipping-up operation to be a bijection, the two uses
- are represented separately using <tt>So</tt> and <tt>Do</tt>.
+In both <tt>left</tt> and <tt>right</tt>, <tt>Add</tt> and
+ <tt>Mul</tt> become subtraction and dividing, but in <tt>right</tt>
+ in order for the the zipping-up operation to be a bijection,
+ subtraction and division are represented using the flipped
+ <tt>So</tt> and <tt>Do</tt> markers.
 
 Equations are zipped-up by <tt>up</tt>, which unrolls one step of the path
-and reforms the term on the left-hand side from that on the right. This is the 
-bijection of <tt>left</tt> and <tt>right</tt>:
+and reforms the term on the left-hand side from that on the right. This is the inverse
+ of <tt>left</tt> and <tt>right</tt>:
 
 > up (Eq t1 (Top a))        = Eq t1 (Top a)
-> up (Eq t1 (Bin A L t2 p)) = Eq (Sub t1 t2) p
-> up (Eq t1 (Bin M L t2 p)) = Eq (Div t1 t2) p
-> up (Eq t1 (Bin D L t2 p)) = Eq (Mul t1 t2) p
-> up (Eq t1 (Bin S L t2 p)) = Eq (Add t1 t2) p
+> up (Eq t1 (Bin A L t2 p)) = Eq (Sub t1 t2) p -- t1 = t2 + p -> t1 - t2 = p
+> up (Eq t1 (Bin M L t2 p)) = Eq (Div t1 t2) p -- t1 = t2 * p -> t1 / t2 = p
+> up (Eq t1 (Bin D L t2 p)) = Eq (Mul t1 t2) p -- t1 = p / t2 -> t1 * t2 = p
+> up (Eq t1 (Bin S L t2 p)) = Eq (Add t1 t2) p -- t1 = p - t2 -> t1 + t2 = p
 
-> up (Eq t1 (Bin So R t2 p)) = Eq (Add t2 t1) p
-> up (Eq t1 (Bin Do R t2 p)) = Eq (Mul t2 t1) p
-> up (Eq t1 (Bin D R t2 p))  = Eq (Div t2 t1) p
-> up (Eq t1 (Bin S R t2 p))  = Eq (Sub t2 t1) p
+> up (Eq t1 (Bin So R t2 p)) = Eq (Add t2 t1) p -- t1 = p - t2 -> t2 + t1 = p
+> up (Eq t1 (Bin Do R t2 p)) = Eq (Mul t2 t1) p -- t1 = p / t2 -> t2 * t1 = p
+> up (Eq t1 (Bin D R t2 p))  = Eq (Div t2 t1) p -- t1 = t2 / p -> t2 / t1 = p
+> up (Eq t1 (Bin S R t2 p))  = Eq (Sub t2 t1) p -- t1 = t2 - p -> t2 - t1 = p
 
-> up (Eq t1 (N p))           = Eq (Neg t1) p
+> up (Eq t1 (N p))           = Eq (Neg t1) p    -- t1 = -p     -> -t1 = p
 
 And that's it! Here is an example of its use. 
 
@@ -155,12 +165,16 @@ x + 1 = (x + y) / (0 + 1)
 *Main> up . up . up . left . right . left $ foo
 ((x + y) / (x + 1)) - 1 = 0
 
-> foo2 = Eq (Mul (Const 0) (Var "x")) (Top (Left 0))
-> foo3 = Eq (Mul (Const 0) (Var "x")) (Top (Right "x"))
-
 Of course, no normalisation is being done so sometimes terms can look a little ugly, but any evaluator
-will deal with this easily. Also, this does not help if you have multiple uses of a variable and you want
-to solve the question for a particular variable, e.g. y = x + 1/(3x), or quadratics.
+will deal with this easily. 
+
+Note, we are only simply rebalancing the syntax of equations. This
+does not help if you have multiple uses of a variable and you want to
+solve the question for a particular variable, e.g. y = x + 1/(3x), or
+quadratics.
 
 Extension question: can we do this for higher-order abstract syntax?
 
+
+> foo2 = Eq (Mul (Const 0) (Var "x")) (Top (Left 0))
+> foo3 = Eq (Mul (Const 0) (Var "x")) (Top (Right "x"))
