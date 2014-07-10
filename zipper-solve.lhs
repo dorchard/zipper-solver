@@ -46,8 +46,8 @@ the subterm in focus, starting from the root, where each marker is accompanied w
 of the parent node and the subtree of the branch not taken, i.e., a path going left is paired with the 
 right subtree, which is not on the path to the focus.
 
-> data Path = TopC Integer
->           | TopV String     -- At the top, i.e. ... = 0
+
+> data Path = Top                   -- At the top, i.e. ... = 0
 >           | Bin Op                -- OR in a binary operation <tt>Op</tt>,
 >                 Dir               --    in either left (<tt>L</tt>) or right (<tt>R</tt>) branch
 >                 Term              --    with the untaken branch 
@@ -82,8 +82,7 @@ Equations are pretty printed as follows:
 where <tt>pathToTerm</tt> converts paths to terms in the obvious way:
 
 > pathToTerm :: Path -> Term
-> pathToTerm TopC           = Const 0  
-> pathToTerm TopC           = Const 0  
+> pathToTerm Top            = Const 0  
 > pathToTerm (Bin op L t p) = (opToTermC op) (pathToTerm p) t
 > pathToTerm (Bin op R t p) = (opToTermC op) t (pathToTerm p)
 > pathToTerm (N p)          = Neg (pathToTerm p)
